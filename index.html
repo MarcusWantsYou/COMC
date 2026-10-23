@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>COMC Forge</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
+<style>
+:root{--bg:#141519;--card:#1c1e25;--line:#2a2d37;--tx:#e6e7ec;--mu:#9296a5;--ac:#8b7cf6;--ok:#58c28a;--bad:#e0706f;color-scheme:dark}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif}
+header{display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:12px 20px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--bg);z-index:5}
+header b{margin-right:14px;letter-spacing:.2px}nav button{background:none;border:0;color:var(--mu);padding:7px 11px;border-radius:7px;cursor:pointer;font:inherit}
+nav button.on,nav button:hover{color:var(--tx);background:var(--card)}
+main{max-width:860px;margin:0 auto;padding:22px 16px 80px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px;margin:0 0 14px}
+h2{margin:6px 0 14px;font-size:22px}h3{margin:0 0 8px;font-size:16px}.mu{color:var(--mu);font-size:14px}
+button.b{background:var(--ac);color:#0e0d18;border:0;border-radius:8px;padding:9px 15px;font:inherit;font-weight:600;cursor:pointer;transition:opacity .15s}
+button.b.g{background:#262935;color:var(--tx);font-weight:500}button.b:disabled{opacity:.4;cursor:not-allowed}
+textarea,input,select{width:100%;background:#12131a;color:var(--tx);border:1px solid var(--line);border-radius:8px;padding:10px;font:inherit}
+textarea{min-height:110px;resize:vertical}:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:10px}.row>*{width:auto}
+.bar{height:7px;background:#262935;border-radius:5px;overflow:hidden}.bar i{display:block;height:100%;background:var(--ac)}
+table{width:100%;border-collapse:collapse;font-size:14px}td,th{text-align:left;padding:7px 6px;border-bottom:1px solid var(--line)}
+.ok{color:var(--ok)}.bad{color:var(--bad)}.pill{font-size:12px;border:1px solid var(--line);border-radius:20px;padding:1px 9px;color:var(--mu)}
+.q{font-size:18px;line-height:1.7}.timer{font-variant-numeric:tabular-nums;font-size:20px}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style></head><body>
+<header><b>COMC Forge</b><nav id="nav"></nav></header><main id="app"></main>
+<script>
+"use strict";
+// ---------- config & storage ----------
+const WORKER_URL=""; // set after deploying worker.js (see README); empty = AI grading unavailable
+const KEY="comcforge.v1";
+let S=JSON.parse(localStorage.getItem(KEY)||"null")||{att:[],mist:[],secs:0,worker:WORKER_URL,sess:null};
+const save=()=>localStorage.setItem(KEY,JSON.stringify(S));
+const $=s=>document.querySelector(s);
+const esc=s=>String(s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+// ---------- math helpers & seeded RNG ----------
+const rng=a=>()=>{a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296};
+const ri=(r,a,b)=>a+Math.floor(r()*(b-a+1)),pick=(r,a)=>a[Math.floor(r()*a.length)];
+const gcd=(a,b)=>b?gcd(b,a%b):a;
+const mpow=(a,n,m)=>{let r=1n,b=BigInt(a)%BigInt(m),e=BigInt(n),M=BigInt(m);while(e>0n){if(e&1n)r=r*b%M;b=b*b%M;e>>=1n}return Number(r)};
+// ---------- problem generators: every answer is computed by code from the parameters ----------
+const G=[
+{id:"diffsq",topic:"Number theory",concept:"Difference of squares / factoring",level:1,lvl:"Part A",make(r){
+ const N=pick(r,[45,63,75,99,105,135,165,189,225,315,495,693]);let c=0;for(let y=1;y<N;y++){const x2=N+y*y,x=Math.round(Math.sqrt(x2));if(x*x==x2)c++}
+ return{q:`How many ordered pairs \\((x,y)\\) of positive integers satisfy \\(x^2-y^2=${N}\\)?`,ans:c,
+ techs:["factor as (x-y)(x+y)","enumerate factor pairs with equal parity"],step:`Write \\((x-y)(x+y)=${N}\\) and list factor pairs \\((d,e)\\) with \\(d<e\\), both odd.`,
+ trig:"A difference of two squares set equal to a constant.",lesson:"x²−y² always factors; integer constraints then become divisor-pair counting with a parity check.",
+ hints:["The left side is not just a sum of terms; it factors.","Let \\(a=x-y\\), \\(b=x+y\\). What must be true of \\(a,b\\) when their product is fixed?","Since \\(a,b\\) have the same parity and \\(a<b\\), list divisor pairs of "+N+".","Each valid pair gives \\(x=(a+b)/2,\\ y=(b-a)/2\\); count pairs with \\(y>0\\)."],
+ sol:`\\((x-y)(x+y)=${N}\\). Each divisor pair \\(a<b\\) of ${N} with same parity gives a unique solution with \\(y>0\\). Count = ${c}.`}}},
+{id:"modpow",topic:"Number theory",concept:"Fermat / remainder cycles",level:1,lvl:"Part A",make(r){
+ const p=pick(r,[7,11,13,17,19,23]),a=ri(r,2,p-1),n=ri(r,200,3000),ans=mpow(a,n,p);
+ return{q:`Find the remainder when \\(${a}^{${n}}\\) is divided by ${p}.`,ans,techs:["Fermat's little theorem","reduce exponent mod p-1","remainder cycle"],
+ step:`Since ${p} is prime, \\(${a}^{${p-1}}\\equiv1\\pmod{${p}}\\); reduce the exponent ${n} modulo ${p-1}.`,trig:"A huge power modulo a (small) prime.",lesson:"For prime p and p∤a, exponents live mod p−1.",
+ hints:["The modulus is prime; is there a theorem about powers?","\\(a^{p-1}\\equiv1\\pmod p\\).",`Write \\(${n}=${p-1}q+s\\).`,`Compute \\(${a}^{${n%(p-1)}}\\bmod ${p}\\).`],sol:`Reduce exponent: ${n} mod ${p-1} = ${n%(p-1)}, so the answer is ${ans}.`}}},
+{id:"stars",topic:"Combinatorics",concept:"Stars and bars / restricted counting",level:2,lvl:"Part B",make(r){
+ const n=ri(r,14,26),k=ri(r,3,6);let c=0;for(let a=0;a<=n;a++)for(let b=0;a+b<=n;b++){const d=n-a-b,m=[a,b,d].filter(v=>v>=k).length;if(m==2)c++}
+ return{q:`How many ordered triples \\((a,b,c)\\) of nonnegative integers satisfy \\(a+b+c=${n}\\) with exactly two of \\(a,b,c\\) at least ${k}?`,ans:c,
+ techs:["stars and bars","substitution to remove lower bounds","complement / inclusion-exclusion"],step:`Choose which variable is the small one (<${k}); shift the other two by ${k} and use stars and bars for each value of the small one.`,
+ trig:"Sum of nonnegative integers with 'at least' conditions.",lesson:"Lower bounds are removed by substituting a'=a−k; 'exactly' needs casework or inclusion-exclusion.",
+ hints:["Which variable is the one allowed to be small? Count by symmetry.","Fix the small variable's value \\(s\\in[0,"+(k-1)+"]\\).","The other two sum to \\("+n+"-s\\) and are each \\(\\ge"+k+"\\); shift them.","Sum \\(\\binom{\\cdot}{1}\\)-type counts over \\(s\\), then multiply by 3."],sol:`Casework on the small variable and stars and bars, times 3 for symmetry, gives ${c}.`}}},
+{id:"circ",topic:"Geometry",concept:"Circumcentre / right-angle geometry",level:1,lvl:"Part A",make(r){
+ const a=ri(r,3,9),b=ri(r,3,9),ans=a*a+b*b;
+ return{q:`Let \\(A=(0,0)\\), \\(B=(${2*a},0)\\), \\(C=(0,${2*b})\\). The point \\(P\\) is equidistant from \\(A,B,C\\). Find \\(PA^2\\).`,ans,
+ techs:["perpendicular bisectors","right angle: hypotenuse midpoint is circumcentre"],step:`Angle at A is right, so P is the midpoint of BC; compute its distance to A.`,trig:"Three points, equidistant: circumcentre; look for a right angle.",lesson:"A right angle inscribed in a circle subtends a diameter (Thales).",
+ hints:["What is special about angle \\(BAC\\)?","The circumcentre of a right triangle lies on the hypotenuse.",`P is the midpoint of BC \\(=(${a},${b})\\).`,"Compute \\(PA^2\\)."],sol:`P=(${a},${b}), so PA²=${a}²+${b}²=${ans}.`}}},
+{id:"vieta",topic:"Algebra",concept:"Vieta / symmetric expressions",level:2,lvl:"Part A",make(r){
+ const u=ri(r,2,9),v=ri(r,2,9),S=u+v,P=u*v,ans=u**3+v**3;
+ return{q:`The numbers \\(r\\) and \\(s\\) are the two roots of \\(x^2-${S}x+${P}=0\\). Find \\(r^3+s^3\\) without being told whether the roots are integers.`,ans,
+ techs:["Vieta's formulas","symmetric sum identity r³+s³=(r+s)³−3rs(r+s)"],step:`Use \\(r+s=${S}\\), \\(rs=${P}\\), and \\(r^3+s^3=(r+s)^3-3rs(r+s)\\).`,trig:"A symmetric expression in the roots of a quadratic.",lesson:"Symmetric expressions are polynomials in r+s and rs: no need to find roots.",
+ hints:["Is the expression symmetric in r and s?","What are \\(r+s\\) and \\(rs\\) from the coefficients?","\\((r+s)^3\\) expands to include \\(r^3+s^3\\).",`\\(${S}^3-3\\cdot${P}\\cdot${S}\\).`],sol:`${S}³−3·${P}·${S}=${ans}.`}}},
+{id:"crt",topic:"Number theory",concept:"Chinese remainder theorem",level:2,lvl:"Part B",make(r){
+ const [m,n]=pick(r,[[5,7],[7,9],[8,11],[9,10],[11,13],[7,12]]),a=ri(r,1,m-1),b=ri(r,1,n-1);let x=1;while(x%m!=a||x%n!=b)x++;
+ return{q:`Find the smallest positive integer \\(x\\) with \\(x\\equiv ${a}\\pmod{${m}}\\) and \\(x\\equiv ${b}\\pmod{${n}}\\).`,ans:x,techs:["Chinese remainder theorem","substitute x=m k + a into second congruence"],
+ step:`Write \\(x=${m}k+${a}\\) and solve \\(${m}k+${a}\\equiv${b}\\pmod{${n}}\\) for k using an inverse of ${m}.`,trig:"Several congruences with coprime moduli.",lesson:"Coprime moduli ⇒ unique solution mod the product; substitute and invert.",
+ hints:["gcd of the moduli?","Parametrize the first congruence.","Plug into the second; you need a modular inverse.",`Answer lies in [1, ${m*n}].`],sol:`Solving gives the unique residue mod ${m*n}: x=${x}.`}}},
+{id:"last2",topic:"Number theory",concept:"Modular arithmetic: last digits",level:2,lvl:"Part A",make(r){
+ const a=pick(r,[3,7,13,17,23,27,33]),n=ri(r,100,2000),ans=mpow(a,n,100);
+ return{q:`Find the last two digits of \\(${a}^{${n}}\\), as the number \\(\\,\\bmod 100\\) (e.g. 07 is entered as 7).`,ans,techs:["work mod 100","cycle length / Euler or CRT mod 4 and 25"],step:`Find the cycle of powers of ${a} mod 100 (or compute mod 4 and mod 25 separately).`,
+ trig:"'Last digits' means a modulus of 10 or 100.",lesson:"Last k digits = residue mod 10^k; powers cycle.",hints:["Last two digits means which modulus?","Powers of a number mod m eventually cycle; find the cycle.","\\(\\varphi(100)=40\\) and gcd with 100 is 1.",`Reduce ${n} mod 20 or 40 and compute.`],sol:`Residue is ${ans}.`}}},
+{id:"lattice",topic:"Combinatorics",concept:"Lattice paths with obstacles",level:2,lvl:"Part B",make(r){
+ const m=ri(r,5,8),n=ri(r,5,8),i=ri(r,2,m-2),j=ri(r,2,n-2);const D=[];for(let x=0;x<=m;x++){D.push([]);for(let y=0;y<=n;y++)D[x].push(x==i&&y==j?0:(x==0&&y==0?1:(x?D[x-1][y]:0)+(y?D[x][y-1]:0)))}
+ return{q:`A path moves from \\((0,0)\\) to \\((${m},${n})\\) using unit steps right or up. How many such paths avoid the lattice point \\((${i},${j})\\)?`,ans:D[m][n],techs:["complement counting","binomial coefficients for lattice paths"],
+ step:`Count all paths \\(\\binom{${m+n}}{${m}}\\), subtract paths through \\((${i},${j})\\).`,trig:"Monotone grid paths with a forbidden point.",lesson:"Forbidden point ⇒ total minus (paths to it × paths from it).",
+ hints:["How many paths with no restriction?","Count the bad paths instead.","Bad paths pass through the point: multiply two path counts.","Subtract."],sol:`Total minus through-point paths = ${D[m][n]}.`}}},
+{id:"gcdlcm",topic:"Number theory",concept:"GCD and LCM structure",level:3,lvl:"Part B",make(r){
+ const g=ri(r,2,5),k=pick(r,[30,42,60,66,105,210]),L=g*k;let c=0;for(let a=g;a<=L;a+=g)for(let b=g;b<=L;b+=g)if(gcd(a,b)==g&&a*b/gcd(a,b)==L)c++;
+ return{q:`How many ordered pairs \\((a,b)\\) of positive integers satisfy \\(\\gcd(a,b)=${g}\\) and \\(\\operatorname{lcm}(a,b)=${L}\\)?`,ans:c,techs:["write a=g·x, b=g·y with gcd(x,y)=1","prime-by-prime exponent analysis","ab=gcd·lcm"],
+ step:`Let \\(a=${g}x,\\ b=${g}y\\) with \\(\\gcd(x,y)=1\\) and \\(xy=${k}\\); count coprime ordered factorizations of ${k}.`,trig:"Both gcd and lcm are given.",lesson:"Factor out the gcd; the rest is a coprime split of the lcm/gcd.",
+ hints:["Factor out the gcd from both numbers.","What does \\(\\gcd=g\\) and \\(\\operatorname{lcm}=gk\\) say about \\(x,y\\)?","\\(xy="+k+"\\), \\(\\gcd(x,y)=1\\).","Each prime power of "+k+" goes entirely to x or y."],sol:`Coprime ordered splits of ${k}: 2^(number of distinct primes)=${c}.`}}},
+{id:"game",topic:"Olympiad reasoning",concept:"Winning and losing positions",level:2,lvl:"Part B",make(r){
+ const k=ri(r,3,7),N=ri(r,k+5,60),W=[false];for(let i=1;i<=N;i++){let w=false;for(let m=1;m<=Math.min(k,i);m++)if(!W[i-m])w=true;W.push(w)}
+ let ans=0;if(W[N])for(let m=1;m<=k;m++)if(!W[N-m]){ans=m;break}
+ return{q:`Two players alternately remove between 1 and ${k} stones from a pile of ${N}. The player who removes the last stone wins. The first player plays optimally. What is the smallest number of stones the first player should remove on the first move to guarantee a win? (Enter 0 if no winning strategy exists.)`,ans,
+ techs:["winning/losing positions","multiples of k+1 are losing"],step:`Compute positions backwards: 0 is losing; find the pattern in multiples of ${k+1}.`,trig:"Alternating removal game with a last-move win.",lesson:"Work backwards from the terminal position to find losing positions.",
+ hints:["Which pile sizes are lost for the player to move?","Pile 0 is lost; what about 1..k?",`The losing positions are the multiples of ${k+1}.`,`Move to the nearest multiple of ${k+1} below ${N}.`],sol:`${N} mod ${k+1}=${N%(k+1)}; ${ans?"remove "+ans:"the first player loses with optimal play, so 0"}.`}}},
+{id:"recur",topic:"Algebra",concept:"Sequences and recurrences",level:1,lvl:"Part A",make(r){
+ const p=ri(r,1,4),q=ri(r,1,3),a=[0,1,ri(r,1,5)];for(let i=3;i<=9;i++)a.push(p*a[i-1]+q*a[i-2]);
+ return{q:`A sequence has \\(a_1=1\\), \\(a_2=${a[2]}\\) and \\(a_n=${p}a_{n-1}+${q}a_{n-2}\\) for \\(n\\ge3\\). Find \\(a_9\\).`,ans:a[9],techs:["iterate the recurrence","organized table"],step:`Compute \\(a_3,a_4,\\dots\\) in order, checking each value.`,trig:"Recurrence with small index asked.",lesson:"For small n, systematic iteration beats clever ideas.",
+ hints:["Is a closed form needed for index 9?","Compute term by term.","\\(a_3="+a[3]+"\\).","\\(a_8="+a[8]+"\\)."],sol:`a₉=${a[9]}.`}}},
+{id:"inv",topic:"Olympiad reasoning",concept:"Invariants and parity",level:3,lvl:"Part C",proof:true,make(r){
+ const n=pick(r,[5,6,9,10,13,14]);
+ return{q:`The numbers \\(1,2,\\dots,${n}\\) are written on a board. In each step you erase two numbers \\(a,b\\) and write \\(|a-b|\\) in their place, until one number remains. Prove that the final number cannot be \\(0\\).`,ans:null,
+ techs:["parity invariant","sum parity is unchanged by |a-b|"],step:`Track the parity of the total sum; \\(a+b\\) and \\(|a-b|\\) have the same parity.`,trig:"A repeated operation on a collection; ask what stays the same.",lesson:"Find a quantity (here sum mod 2) that the operation preserves.",
+ hints:["What quantity does each step leave unchanged mod 2?","Compare \\(a+b\\) with \\(|a-b|\\) modulo 2.",`The initial sum is ${n*(n+1)/2}, which is odd.`,"The final single number has that same parity."],sol:`|a−b|≡a+b (mod 2), so the sum's parity never changes. Initial sum ${n*(n+1)/2} is odd, so the last number is odd, hence ≠0.`}}}
+];
+const byId=Object.fromEntries(G.map(g=>[g.id,g]));
+function inst(g,seed){const o=g.make(rng(seed));return{...o,gid:g.id,seed,topic:g.topic,concept:g.concept,level:g.level,lvl:g.lvl,proof:!!g.proof}}
+// ---------- stages ----------
+const STAGES=[
+{n:1,name:"Rapid pattern recognition",mode:"rec",f:g=>!g.proof},
+{n:2,name:"Foundational execution",mode:"solve",f:g=>!g.proof&&g.level<=2},
+{n:3,name:"Disguised techniques",mode:"solve",f:g=>!g.proof&&g.level>=2},
+{n:4,name:"Multi-technique problems",mode:null,f:null},
+{n:5,name:"Part C proof training",mode:"proof",f:g=>g.proof},
+{n:6,name:"Timed COMC simulation",mode:null,f:null}];
+const LOCK_AFTER=[null,1,2,3,3,5]; // stage 4 and 6 are not built yet; 5 unlocks after 3
+const eligible=n=>S.att.filter(a=>a.stage==n&&!a.sol);
+const recent=n=>eligible(n).slice(-15);
+const mastery=n=>{const r=recent(n);return{cnt:r.length,avg:r.length?r.reduce((s,a)=>s+a.score,0)/r.length:0}};
+const passed=n=>{const m=mastery(n);return m.cnt>=15&&m.avg>=90};
+const unlocked=n=>{const L=LOCK_AFTER[n-1];return !L||passed(L)};
+// ---------- concept tracking & selection (weakness + spaced repetition) ----------
+function conceptStats(){const m={};S.att.forEach(a=>{const c=m[a.concept]||(m[a.concept]={n:0,ema:null,last:0});c.n++;c.ema=c.ema==null?a.score:c.ema*.65+a.score*.35;c.last=a.t});return m}
+function chooseGen(f){const pool=G.filter(f),cs=conceptStats(),last=S.att.length?S.att[S.att.length-1].gid:null;
+ const w=pool.map(g=>{const c=cs[g.concept];let x=c?(100-c.ema)+Math.min(60,(Date.now()-c.last)/864e5*10)+5:80;if(g.id==last)x*=.1;return Math.max(x,3)});
+ let t=Math.random()*w.reduce((a,b)=>a+b,0),i=0;while(t>w[i]&&i<w.length-1){t-=w[i];i++}return pool[i]}
+// ---------- AI grader client ----------
+const num=(v,m)=>typeof v=="number"&&v>=0&&v<=m;
+function validGrade(o){return o&&num(o.technique,30)&&num(o.step,30)&&num(o.justification,25)&&num(o.correctness,15)&&Array.isArray(o.recognized)&&Array.isArray(o.missing)&&["example_step","trigger","lesson"].every(k=>typeof o[k]=="string")}
+async function grade(it,resp,hints,extra){
+ if(!S.worker)return{unavail:"No grading backend configured. Add your Worker URL in Settings (see README)."};
+ try{const r=await fetch(S.worker,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({question:it.q,reference:it.sol,rubric:{technique:30,step:30,justification:25,correctness:15},techniques:it.techs,hintsUsed:hints,difficulty:it.lvl+" (estimated)",response:resp,mode:it.proof?"proof":"recognition",appeal:extra||null})});
+  const o=await r.json();if(!validGrade(o))throw 0;o.score=Math.round(o.technique+o.step+o.justification+o.correctness);return o}catch(e){return{unavail:"Grading backend unreachable or returned an invalid response."}}}
+// ---------- rendering ----------
+const NAV=["Dashboard","Train","Session","Library","Journal","Stats","Settings"];
+let page="Dashboard",T=null,clock=Date.now();
+function typeset(){if(window.renderMathInElement)renderMathInElement(document.body,{delimiters:[{left:"\\[",right:"\\]",display:true},{left:"\\(",right:"\\)",display:false}],throwOnError:false});else setTimeout(typeset,300)}
+function go(p){page=p;render()}
+function render(){$("#nav").innerHTML=NAV.map(p=>`<button class="${p==page?"on":""}" onclick="go('${p}')">${p}</button>`).join("");
+ $("#app").innerHTML=({Dashboard,Train,Session,Library,Journal,Stats,Settings})[page]();typeset();if(page=="Train"&&T)tick()}
+setInterval(()=>{S.secs+=5;save()},5000);
+const mm=s=>Math.floor(s/60)+":"+String(Math.floor(s%60)).padStart(2,"0");
+const bar=v=>`<div class="bar"><i style="width:${Math.max(0,Math.min(100,v))}%"></i></div>`;
+function Dashboard(){const cs=conceptStats(),ks=Object.entries(cs).sort((a,b)=>a[1].ema-b[1].ema);
+ return`<h2>Today: Friday, 23 October 2026</h2>
+ <div class="card"><h3>Three-hour session</h3><p class="mu">Five guided blocks. Each block needs demonstrated performance to advance.</p><button class="b" onclick="go('Session')">Open session</button></div>
+ <div class="card"><h3>Stage progress</h3>${STAGES.map(s=>{const m=mastery(s.n),ok=s.mode&&passed(s.n),lk=s.mode&&!unlocked(s.n);return`<div style="margin:10px 0"><div style="display:flex;justify-content:space-between"><span>Stage ${s.n}: ${s.name}</span><span class="mu">${!s.mode?"not built yet":lk?"locked":ok?"mastered":m.cnt+"/15 attempts, avg "+Math.round(m.avg)+"%"}</span></div>${bar(s.mode?m.avg:0)}</div>`}).join("")}</div>
+ <div class="card"><h3>Weakest concepts</h3>${ks.length?ks.slice(0,5).map(([c,v])=>`<div class="row" style="justify-content:space-between"><span>${esc(c)}</span><span class="mu">${Math.round(v.ema)}% (${v.n} tries)</span></div>`).join(""):'<p class="mu">Complete a few exercises to see this.</p>'}</div>
+ <div class="card"><h3>Time studied</h3>${mm(S.secs)} total with this page open. Attempts logged: ${S.att.length}.</div>`}
+// ----- training flow -----
+function startTrain(n,f,mode){const st=STAGES[n-1];const g=chooseGen(f||st.f),seed=Math.floor(Math.random()*1e9);T={st:n,mode:mode||st.mode,it:inst(g,seed),t0:Date.now(),hints:0,sol:false,done:false,fb:null,block:T&&T.block};render()}
+function Train(){let h=`<h2>Train</h2><div class="row">`+STAGES.filter(s=>s.mode).map(s=>`<button class="b ${T&&T.st==s.n?"":"g"}" ${unlocked(s.n)?"":"disabled"} onclick="startTrain(${s.n})">Stage ${s.n}${unlocked(s.n)?"":" (locked)"}</button>`).join("")+`</div>`;
+ if(!T)return h+`<p class="mu">Pick a stage. Stages 4 and 6 are not built yet. Stage 1 unlocks 2, stage 2 unlocks 3, stage 3 unlocks 5; unlocking needs a mean of at least 90 over your last 15 attempts in the stage that did not reveal the solution.</p>`;
+ const it=T.it,rec=T.mode=="rec";
+ h+=`<div class="card" style="margin-top:14px"><div class="row" style="justify-content:space-between;margin:0 0 8px"><span class="pill">${esc(it.topic)} · ${it.lvl} (estimated)</span>${rec?`<span class="timer" id="tm"></span>`:""}</div><div class="q">${it.q}</div></div>`;
+ if(!T.done){
+  h+=rec?`<div class="card"><p class="mu">In about 30 seconds: which technique would you try, what is your first step, and why? Do not solve it.</p><textarea id="ans" placeholder="I would ... because ..."></textarea><div class="row"><button class="b" onclick="submitText()">Submit for grading</button></div></div>`
+  :T.mode=="proof"?`<div class="card"><textarea id="ans" style="min-height:220px" placeholder="Write your proof"></textarea><div class="row"><button class="b" onclick="submitText()">Submit for grading</button></div></div>`
+  :`<div class="card"><div class="row"><input id="ans" style="max-width:220px" placeholder="Integer answer" onkeydown="if(event.key=='Enter')checkNum()"><button class="b" onclick="checkNum()">Check</button></div><div id="msg" class="mu"></div></div>`;
+  h+=`<div class="card"><h3>Hints</h3>`+it.hints.slice(0,T.hints).map((x,i)=>`<p><b>${i+1}.</b> ${x}</p>`).join("")+(T.sol?`<p><b>Solution.</b> ${it.sol}</p>`:"")+
+  `<div class="row">${T.hints<4?`<button class="b g" onclick="T.hints++;render()">Hint ${T.hints+1} (-${(T.hints+1)*5} points cap)</button>`:""}${T.sol?"":`<button class="b g" onclick="if(confirm('Revealing the solution makes this a learning item, not mastery.')){T.sol=true;finish(0,true);}">Show full solution</button>`}</div></div>`}
+ else h+=feedback();
+ return h}
+function tick(){const el=$("#tm");if(!el||!T||T.mode!="rec"||T.done)return;const s=30-(Date.now()-T.t0)/1000;el.textContent=s>=0?mm(s):"over time";el.className="timer"+(s<0?" bad":"");setTimeout(tick,500)}
+function record(score,extra={}){const it=T.it,secs=Math.round((Date.now()-T.t0)/1000);
+ S.att.push({t:Date.now(),stage:T.st,mode:T.mode,gid:it.gid,seed:it.seed,concept:it.concept,topic:it.topic,level:it.level,score,hints:T.hints,sol:T.sol,secs,...extra});
+ if(score<60)S.mist.push({t:Date.now(),gid:it.gid,seed:it.seed,concept:it.concept,type:extra.type||(T.mode=="rec"?"Recognition error":"Conceptual misunderstanding"),done:false});save()}
+function finish(score,sol){if(!T.done){record(score,{sol:!!sol,type:sol?"Incomplete justification":undefined});T.done=true;T.fb={score,note:sol?"Solution revealed: recorded as learning, not mastery. You will get a fresh problem on this idea later.":null};render()}}
+function checkNum(){const v=$("#ans").value.trim();if(!/^-?\d+$/.test(v)){$("#msg").textContent="Enter an integer.";return}
+ if(+v===T.it.ans){const sc=Math.max(0,100-T.hints*10-(T.wrong?20:0));record(sc,{type:"ok"});T.done=true;T.fb={score:sc,ok:true};render()}
+ else if(!T.wrong){T.wrong=1;record(0,{type:"Algebraic or arithmetic error"});$("#msg").innerHTML='<span class="bad">Not correct.</span> Recorded as a miss; you may keep trying or use hints.'}
+ else $("#msg").innerHTML='<span class="bad">Still not correct.</span>'}
+async function submitText(){const r=$("#ans").value.trim();if(r.length<5)return;$("#app").insertAdjacentHTML("beforeend",'<p class="mu">Grading...</p>');
+ const g=await grade(T.it,r,T.hints);T.resp=r;T.done=true;
+ if(g.unavail){T.fb={unavail:g.unavail}}else{const sc=Math.max(0,g.score-T.hints*5);T.fb={g,score:sc};record(sc,{ai:true,resp:r.slice(0,400),type:sc<60?(T.mode=="rec"?"Recognition error":"Incomplete justification"):undefined})}render()}
+function selfGrade(v){record(v,{self:true});T.fb={score:v,self:true};render()}
+async function appeal(){const t=prompt("Why do you think the grade is wrong?");if(!t)return;const g=await grade(T.it,T.resp,T.hints,t);if(g.unavail){alert(g.unavail);return}
+ const sc=Math.max(0,g.score-T.hints*5),last=S.att[S.att.length-1];last.score=sc;save();T.fb={g,score:sc,regrade:true};render()}
+function feedback(){const f=T.fb,it=T.it;let h=`<div class="card">`;
+ if(f.unavail)h+=`<h3>AI grading unavailable</h3><p class="mu">${f.unavail} Keyword matching is not a substitute, so nothing was scored automatically.</p><p><b>Reference first step:</b> ${it.step}</p><p><b>Techniques:</b> ${it.techs.join("; ")}</p><p class="mu">Compare honestly with your answer, then self-grade (recorded as self-graded):</p><div class="row"><button class="b g" onclick="selfGrade(90)">Matched</button><button class="b g" onclick="selfGrade(55)">Partly</button><button class="b g" onclick="selfGrade(10)">Missed</button></div>`;
+ else if(f.g){const g=f.g;h+=`<h3>Score: ${f.score}/100${f.regrade?" (regraded)":""}</h3><p class="mu">Technique ${g.technique}/30 · First step ${g.step}/30 · Justification ${g.justification}/25 · Correctness ${g.correctness}/15${T.hints?` · hint penalty -${T.hints*5}`:""}</p><p><b class="ok">Recognized:</b> ${g.recognized.map(esc).join("; ")||"-"}</p><p><b class="bad">Missing:</b> ${g.missing.map(esc).join("; ")||"-"}</p><p><b>Strong first step:</b> ${esc(g.example_step)}</p><p><b>Recognition trigger:</b> ${esc(g.trigger)}</p><p><b>Lesson:</b> ${esc(g.lesson)}</p><div class="row"><button class="b g" onclick="appeal()">Appeal this grade</button></div>`}
+ else if(f.ok)h+=`<h3 class="ok">Correct. Score ${f.score}/100</h3><p><b>Lesson:</b> ${it.lesson}</p>`;
+ else h+=`<h3>${f.note||"Recorded"}</h3><p><b>Lesson:</b> ${it.lesson}</p>`;
+ return h+`<div class="row"><button class="b" onclick="startTrain(T.st,null,T.mode)">Next problem</button></div></div>`}
+// ----- three-hour session -----
+const BLOCKS=[{m:30,name:"Rapid pattern recognition",st:1,f:g=>!g.proof,need:8,thr:70},{m:45,name:"Counting and number theory",st:2,f:g=>g.topic=="Combinatorics"||g.topic=="Number theory",need:6,thr:70},
+{m:40,name:"Geometry and algebra",st:2,f:g=>g.topic=="Geometry"||g.topic=="Algebra",need:4,thr:70},{m:35,name:"Part C reasoning",st:5,f:g=>g.proof||g.topic=="Olympiad reasoning",need:2,thr:50},{m:30,name:"Timed mixed assessment and review",st:3,f:g=>!g.proof,need:6,thr:60}];
+function Session(){const s=S.sess;if(!s)return`<h2>Three-hour session</h2><p class="mu">Blocks total 180 minutes. Take a 5 minute break between blocks 2 and 3 and 3 and 4 (these come out of the block times).</p><table>${BLOCKS.map(b=>`<tr><td>${b.m} min</td><td>${b.name}</td></tr>`).join("")}</table><div class="row"><button class="b" onclick="S.sess={i:0,t0:Date.now(),bt:Date.now(),rem:0};save();go('Session')">Start session</button></div>`;
+ const b=BLOCKS[s.i],at=S.att.filter(a=>a.t>=s.bt&&a.stage&&a.blk===s.i),done=at.length,avg=done?at.reduce((x,a)=>x+a.score,0)/done:0,met=done>=b.need&&avg>=b.thr,el=(Date.now()-s.bt)/1000;
+ return`<h2>Block ${s.i+1} of 5: ${b.name}</h2><div class="card"><div class="timer">${mm(el)} / ${b.m}:00</div><p class="mu">Required: ${b.need} attempts averaging ${b.thr}+. Now: ${done} attempts, average ${Math.round(avg)}. Time alone does not advance you.</p>${bar(Math.min(100,done/b.need*100))}
+ <div class="row"><button class="b" onclick="T=null;startTrain(${b.st},BLOCKS[${s.i}].f);T.block=${s.i};go('Train')">Practise this block</button><button class="b g" ${met?"":"disabled"} onclick="S.sess.i++;S.sess.bt=Date.now();if(S.sess.i>=5){S.sess=null}save();go('Session')">Next block</button></div>
+ ${!met&&done>=b.need?`<p class="bad">Threshold not met. Review the lesson for your weakest concept in <a href="#" onclick="go('Library');return false" style="color:var(--ac)">the library</a>, then retest.</p>`:""}</div>`}
+const _rec=record;record=function(sc,ex){_rec(sc,ex);if(T&&T.block!=null&&S.sess){S.att[S.att.length-1].blk=T.block;save()}};
+// ----- library / journal / stats / settings -----
+function Library(){return`<h2>Technique library</h2>`+G.map(g=>{const o=inst(g,7);return`<div class="card"><h3>${g.concept} <span class="pill">${g.topic}</span></h3><p><b>Recognition trigger:</b> ${o.trig}</p><p><b>Key idea:</b> ${o.lesson}</p><p class="mu"><b>Example:</b> ${o.q}</p><p class="mu"><b>Common techniques:</b> ${o.techs.join("; ")}</p></div>`}).join("")}
+function Journal(){return`<h2>Mistake journal</h2>`+(S.mist.length?S.mist.slice().reverse().map((m,i)=>`<div class="card"><div class="row" style="justify-content:space-between;margin:0"><span>${esc(m.concept)}</span><span class="pill">${m.type}</span></div><p class="mu">${new Date(m.t).toLocaleString()}</p><button class="b g" onclick="T=null;startTrain(${byId[m.gid].proof?5:byId[m.gid].level>=3?3:2},g=>g.id=='${m.gid}',byId['${m.gid}'].proof?'proof':'solve');go('Train')">Retest with a new problem</button></div>`).join(""):`<p class="mu">No mistakes logged yet. Missed items appear here; retests use new parameters, never the old answer.</p>`)}
+function Stats(){const a=S.att,by=k=>{const m={};a.forEach(x=>{(m[x[k]]=m[x[k]]||[]).push(x.score)});return Object.entries(m)};const avg=v=>Math.round(v.reduce((x,y)=>x+y,0)/v.length);
+ const noH=a.filter(x=>!x.hints&&!x.sol);const row=(k,v)=>`<tr><td>${esc(k)}</td><td>${avg(v)}%</td><td class="mu">${v.length}</td></tr>`;
+ return`<h2>Statistics</h2><div class="card"><h3>Overall</h3><p>Attempts: ${a.length}. Mean score: ${a.length?avg(a.map(x=>x.score)):"-"}. Without hints: ${noH.length?avg(noH.map(x=>x.score)):"-"}. Median time: ${a.length?[...a.map(x=>x.secs)].sort((x,y)=>x-y)[a.length>>1]+"s":"-"}.</p><p class="mu">There is no contest-score projection yet: the timed COMC simulator is not built, so any projection would be a guess.</p></div>
+ <div class="card"><h3>By topic</h3><table>${by("topic").map(([k,v])=>row(k,v)).join("")}</table></div><div class="card"><h3>By difficulty (estimated levels)</h3><table>${by("level").map(([k,v])=>row("Level "+k,v)).join("")}</table></div>
+ <div class="card"><h3>Last 20 scores</h3><p>${a.slice(-20).map(x=>x.score).join(", ")||"-"}</p></div>`}
+function Settings(){return`<h2>Settings</h2><div class="card"><h3>AI grading backend URL</h3><input id="wu" value="${esc(S.worker||"")}" placeholder="https://comc-forge.yourname.workers.dev"><div class="row"><button class="b" onclick="S.worker=$('#wu').value.trim();save();alert('Saved')">Save</button></div></div>
+ <div class="card"><h3>Question bank</h3><p>${G.length} generator templates, each computing its answer from random parameters (brute force or closed form). That is far fewer than 1,000 structurally distinct exercises. No official COMC problems are included.</p></div>
+ <div class="card"><button class="b g" onclick="if(confirm('Erase all progress?')){localStorage.removeItem(KEY);location.reload()}">Reset all progress</button></div>`}
+render();
+</script></body></html>
